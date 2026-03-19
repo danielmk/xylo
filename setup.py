@@ -7,18 +7,21 @@ with open('LICENSE') as f:
     license = f.read()
 
 setup(
-    name='project',
+    name='xylo',
     version='0.0.1',
-    description='Template for Python based neuroscience research.',
+    description='Neuromorphic bird sound detection.',
     long_description=readme,
     author='Daniel Müller-Komorowska',
     author_email='danielmuellermsc@gmail.com',
-    url='https://github.com/danielmk/template',
+    url='https://github.com/danielmk/xylo',
     license=license,
-    packages=['project'],
+    packages=['xylo'],
     install_requires=[
-          'sbi==0.24.0',
-          'numpy',
-          'pandas',
-          'matplotlib',
-          'scipy',],)
+        'birdnet',
+        'samna',
+        'rockpool',
+        'numpy',
+        'pandas',
+        'matplotlib',
+        'scipy',
+        'librosa'],)
