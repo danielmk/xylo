@@ -1,0 +1,10 @@
+name: template
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.13
+  - sbi=0.24.0
+  - pip
+  - pip:
+    - -e .
