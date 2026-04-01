@@ -17,10 +17,11 @@ setup(
     license=license,
     packages=['xylo'],
     install_requires=[
-        'rockpool[xylo, tests, docs]',
+        'rockpool[all]',
         'numpy',
         'pandas',
         'matplotlib',
         'scipy',
         'librosa',
-        'parquetdb'],)
+        'parquetdb',
+	'tables'],)
