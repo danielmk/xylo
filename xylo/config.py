@@ -1,10 +1,8 @@
 import platform
-import os
+import pathlib
 
 if platform.system() == 'Windows':
-    data_save_path = os.path.join(os.path.dirname(__file__), 'data')
-    data_load_path = os.path.join(os.path.dirname(__file__), 'data')
+    okeon_bucket = pathlib.Path("Y:\danielmk\okeon")
 elif platform.system() == 'Linux':
-    data_save_path = r'/'
-    data_load_path = r'/'
+    okeon_bucket = pathlib.Path("/bucket/FukaiU/danielmk/okeon/")
 

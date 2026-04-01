@@ -17,11 +17,10 @@ setup(
     license=license,
     packages=['xylo'],
     install_requires=[
-        'birdnet',
-        'samna',
-        'rockpool',
+        'rockpool[xylo, tests, docs]',
         'numpy',
         'pandas',
         'matplotlib',
         'scipy',
-        'librosa'],)
+        'librosa',
+        'parquetdb'],)

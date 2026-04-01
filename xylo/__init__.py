@@ -2,10 +2,11 @@ from dataclasses import dataclass
 from typing import Union, Optional
 # import config
 from . import config
+from . import features
+from . import datastructure
 
 @dataclass
 class Config():
-    data_save_path: Optional[str] = config.data_save_path
-    data_load_path: Optional[str] = config.data_load_path
+    okeon_bucket: Optional[str] = config.okeon_bucket
     
 
