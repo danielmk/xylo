@@ -10,14 +10,14 @@ import numpy as np
 from scipy.signal import butter, filtfilt, hilbert
 from scipy.ndimage import uniform_filter1d
 
-def merge_intervals_pandas(df, start_col="Time_start", end_col="Time_End", merge_touching=False):
+def merge_intervals_pandas(df, start_col="Time_start", end_col="Time_End", conf_col="Confidence", merge_touching=False):
     """
     Merge intervals using a group labeling trick and groupby.
     """
     if df.empty:
-        return df[[start_col, end_col]].copy()
+        return df[[start_col, end_col, conf_col]].copy()
 
-    d = df[[start_col, end_col]].sort_values([start_col, end_col]).reset_index(drop=True)
+    d = df[[start_col, end_col, conf_col]].sort_values([start_col, end_col]).reset_index(drop=True)
     # running maximum of ends
     running_end = d[end_col].cummax()
 
@@ -32,7 +32,7 @@ def merge_intervals_pandas(df, start_col="Time_start", end_col="Time_End", merge
     grp = new_group.cumsum()
 
     out = (d.groupby(grp, as_index=False)
-             .agg({start_col: 'min', end_col: 'max'}))
+             .agg({start_col: 'min', end_col: 'max', conf_col: "max",}))
 
     return out
 

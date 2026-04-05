@@ -11,8 +11,8 @@ from rockpool.nn.networks import SynNet
 net = SynNet(
     n_channels = 16,
     n_classes = 1,
-    size_hidden_layers = [24, 24, 24],
-    time_constants_per_layer = [2, 4, 8],
+    size_hidden_layers = [140, 40, 40, 40, 40, 40],
+    time_constants_per_layer = [2, 2, 4, 4, 8, 8],
     )
 
 print(net)

@@ -5,7 +5,7 @@ for machine learning training data.
 
 Schema:
     /dataset
-        ├── metadata        (Table)
+        ├── samples        (Table)
         ├── audio           (EArray)
         ├── spike_times     (VLArray)
         └── spike_channels  (VLArray)
@@ -19,17 +19,23 @@ class SampleMeta(tables.IsDescription):
     """
     Fixed-size per-sample metadata.
     """
-    on_time    = tables.Float64Col()
-    off_time   = tables.Float64Col()
+    call_duration    = tables.Float64Col()
     confidence = tables.Float32Col()
 
     t_start = tables.Float64Col()
     t_stop  = tables.Float64Col()
 
-    quality = tables.BoolCol()
-
-    species  = tables.StringCol(32)
+    species  = tables.StringCol(64)
     filename = tables.StringCol(128)
+    
+    # SAMPle ExTRACTION PARAMETERS
+    confidence_threshold = tables.Float32Col()
+    f_low = tables.Float32Col()
+    f_high = tables.Float32Col()
+    bandpass_order = tables.Int16Col()
+    threshold_k = tables.Float32Col()
+    time_pre = tables.Float32Col()
+    time_post = tables.Float32Col()    
     
     sr = tables.Float64Col()
 
@@ -79,7 +85,7 @@ def create_empty_dataset(
         # Metadata table
         h5.create_table(
             group,
-            "metadata",
+            "samples",
             description=SampleMeta,
             filters=filters
         )
@@ -111,40 +117,39 @@ def create_empty_dataset(
 
 def append_sample(
     h5file: tables.File,
-    *,
-    on_time: float,
-    off_time: float,
+    call_duration: float,
     confidence: float,
-    species: str,
-    filename: str,
     t_start: float,
     t_stop: float,
-    quality: float,
+    species: str,
+    filename: str,
+    confidence_threshold: float,
+    f_low: float,
+    f_high: float,
+    bandpass_order: int,
+    threshold_k: float,
+    time_pre: float,
+    time_post: float,
+    sr: float,
     audio: np.ndarray,
     spike_times: np.ndarray,
     spike_channels: np.ndarray,
-    group_name: str = "dataset",
+    group_name: str = "train",
 ):
     """
-    Append a single sample to an existing dataset.
-
-    Parameters
-    ----------
-    h5file : tables.File
-        An open PyTables file (mode='a').
-
-    All other parameters correspond to one sample.
+    Append a single sample to the dataset.
     """
 
     group = h5file.get_node(f"/{group_name}")
 
-    meta = group.metadata
+    samples_tbl = group.samples
     audio_arr = group.audio
     spike_times_arr = group.spike_times
     spike_channels_arr = group.spike_channels
 
-    # --- Validation ---------------------------------------------------------
+    # ---- Validation -------------------------------------------------------
 
+    audio = np.asarray(audio)
     if audio.ndim != 1:
         raise ValueError("audio must be a 1D array")
 
@@ -154,29 +159,39 @@ def append_sample(
             f"dataset audio length {audio_arr.shape[1]}"
         )
 
-    if spike_times.shape != spike_channels.shape:
-        raise ValueError("spike_times and spike_channels must have the same shape")
-
     spike_times = np.asarray(spike_times, dtype=np.float64)
     spike_channels = np.asarray(spike_channels, dtype=np.int16)
-    audio = np.asarray(audio, dtype=audio_arr.atom.dtype)
 
-    # --- Append metadata ----------------------------------------------------
+    if spike_times.shape != spike_channels.shape:
+        raise ValueError(
+            "spike_times and spike_channels must have the same shape"
+        )
 
-    row = meta.row
-    row["on_time"] = on_time
-    row["off_time"] = off_time
+    # ---- Append sample table ----------------------------------------------
+
+    row = samples_tbl.row
+    row["call_duration"] = call_duration
     row["confidence"] = confidence
-    row["species"] = species
-    row["filename"] = filename
     row["t_start"] = t_start
     row["t_stop"] = t_stop
-    row["quality"] = quality
+    row["species"] = species
+    row["filename"] = filename
+
+    row["confidence_threshold"] = confidence_threshold
+    row["f_low"] = f_low
+    row["f_high"] = f_high
+    row["bandpass_order"] = bandpass_order
+    row["threshold_k"] = threshold_k
+    row["time_pre"] = time_pre
+    row["time_post"] = time_post
+
+    row["sr"] = sr
+
     row.append()
-    meta.flush()
+    samples_tbl.flush()
 
-    # --- Append arrays ------------------------------------------------------
+    # ---- Append arrays ----------------------------------------------------
 
-    audio_arr.append(audio[np.newaxis, :])
+    audio_arr.append(audio[np.newaxis, :].astype(audio_arr.atom.dtype))
     spike_times_arr.append(spike_times)
     spike_channels_arr.append(spike_channels)
