@@ -16,6 +16,8 @@ import librosa
 import matplotlib.pyplot as plt
 from IPython.display import Audio
 
+# dataset_path = r'/flash/FukaiU/danielmk/dataset.h5'
+
 dataset_path = r'/flash/FukaiU/danielmk/dataset.h5'
 
 dataset = tables.open_file(dataset_path, mode='r+')
@@ -41,7 +43,7 @@ k = 100           # number to select
 
 indices = np.random.choice(n, size=k, replace=False)
 
-test_index = 8
+test_index = 7
 
 sr=dataset.root.train.samples[test_index]['sr']
 D = librosa.amplitude_to_db(np.abs(librosa.stft(dataset.root.train.audio[indices[test_index]])), ref=np.max)
@@ -56,3 +58,5 @@ event = TSEvent(
 
 plt.figure()
 event.plot(marker='|', alpha=0.8)
+
+output, state, rec = net(event, record=True)
