@@ -15,8 +15,7 @@ from rockpool.timeseries import TSEvent
 import librosa
 import matplotlib.pyplot as plt
 from IPython.display import Audio
-
-# dataset_path = r'/flash/FukaiU/danielmk/dataset.h5'
+import torch
 
 dataset_path = r'/flash/FukaiU/danielmk/dataset.h5'
 
@@ -27,19 +26,16 @@ net = SynNet(
     n_classes = 1,
     size_hidden_layers = [140, 40, 40, 40, 40, 40],
     time_constants_per_layer = [2, 2, 4, 4, 8, 8],
+    output='vmem',
+    threshold=0.8
     )
 
 print(net)
 
-# - Get the optimiser functions
-optimizer = Adam(net.parameters().astorch(), lr=1e-4)
-
-# - Loss function
-loss_fun = MSELoss()
-
 """SELECT RANDOM SAMPLES"""
 n = dataset.root.train.samples.shape[0]
 k = 100           # number to select
+t_stop=2.504
 
 indices = np.random.choice(n, size=k, replace=False)
 
@@ -50,13 +46,62 @@ D = librosa.amplitude_to_db(np.abs(librosa.stft(dataset.root.train.audio[indices
 fig, ax = plt.subplots(1, 1)
 img = librosa.display.specshow(D, y_axis='linear', x_axis='s', sr=sr, ax=ax)
 
-event = TSEvent(
-    times=dataset.root.train.spike_times[indices[test_index]],
-    channels=dataset.root.train.spike_channels[indices[test_index]],
-    t_stop=2.504
-)
+def to_raster(times : list, channels : list, t_start=0, t_stop=2.504, dt=0.001):
+    
+    if len(times) != len(channels): raise ValueError
+    
+    rasters = []
+    for i in range(len(times)):
+        event = TSEvent(
+            times=times[i],
+            channels=channels[i],
+            t_stop=t_stop
+            )
+        raster = event.raster(dt, t_start=t_start, t_stop=t_stop, add_events=True)
+        
+        rasters.append(raster)
+    return torch.Tensor(rasters)
+    
+rasters = to_raster(dataset.root.train.spike_times[indices], dataset.root.train.spike_channels[indices],t_stop=t_stop)
 
-plt.figure()
-event.plot(marker='|', alpha=0.8)
+# output, state, rec = net(event, record=True)
 
-output, state, rec = net(event, record=True)
+labels = np.zeros((k, int(t_stop / net.dt), 1))
+
+onset_idx = int(1.0 / net.dt)
+
+labels[:, onset_idx:onset_idx + int(0.5 / net.dt), :] = 1
+
+labels = torch.Tensor(labels)
+
+# output, state, rec = net(torch.Tensor(rasters), record=True)
+
+# - Get the optimiser functions
+optimizer = Adam(net.parameters().astorch(), lr=1e-4)
+
+# - Loss function
+loss_fun = MSELoss()
+
+net.train()
+
+loss_t = []
+for i in range(500):
+    
+    print(i)
+
+    # events = events.to_dense()
+    optimizer.zero_grad()
+    
+    output, _, _ = net(rasters)
+    
+    loss = loss_fun(output, labels)
+    
+    loss.backward()
+    optimizer.step()
+
+    this_loss = loss.item()
+    
+    loss_t.append(this_loss)
+
+
+
