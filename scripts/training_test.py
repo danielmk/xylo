@@ -16,8 +16,16 @@ import librosa
 import matplotlib.pyplot as plt
 from IPython.display import Audio
 import torch
+import sys
 
-dataset_path = r'/flash/FukaiU/danielmk/dataset.h5'
+torch.manual_seed(65)
+np.random.seed(68)
+
+dev = "cuda:0" if torch.cuda.is_available() else "cpu"
+device = torch.device(dev)
+
+# dataset_path = r'/flash/FukaiU/danielmk/dataset.h5'
+dataset_path = r'Y:\danielmk\okeon\dataset.h5'
 
 dataset = tables.open_file(dataset_path, mode='r+')
 
@@ -27,8 +35,10 @@ net = SynNet(
     size_hidden_layers = [140, 40, 40, 40, 40, 40],
     time_constants_per_layer = [2, 2, 4, 4, 8, 8],
     output='vmem',
-    threshold=0.8
+    threshold=0.5,
     )
+
+net = net.to(device)
 
 print(net)
 
@@ -39,14 +49,14 @@ t_stop=2.504
 
 indices = np.random.choice(n, size=k, replace=False)
 
-test_index = 7
+test_index = 18
 
 sr=dataset.root.train.samples[test_index]['sr']
 D = librosa.amplitude_to_db(np.abs(librosa.stft(dataset.root.train.audio[indices[test_index]])), ref=np.max)
-fig, ax = plt.subplots(1, 1)
-img = librosa.display.specshow(D, y_axis='linear', x_axis='s', sr=sr, ax=ax)
+fig, ax = plt.subplots(2, 1)
+img = librosa.display.specshow(D, y_axis='linear', x_axis='s', sr=sr, ax=ax[0])
 
-def to_raster(times : list, channels : list, t_start=0, t_stop=2.504, dt=0.001):
+def to_raster(times : list, channels : list, t_start=0.0, t_stop=2.504, dt=0.001):
     
     if len(times) != len(channels): raise ValueError
     
@@ -62,9 +72,9 @@ def to_raster(times : list, channels : list, t_start=0, t_stop=2.504, dt=0.001):
         rasters.append(raster)
     return torch.Tensor(rasters)
     
-rasters = to_raster(dataset.root.train.spike_times[indices], dataset.root.train.spike_channels[indices],t_stop=t_stop)
+rasters = to_raster(dataset.root.train.spike_times[indices], dataset.root.train.spike_channels[indices],t_stop=t_stop,dt=0.001)
 
-# output, state, rec = net(event, record=True)
+sys.exit()
 
 labels = np.zeros((k, int(t_stop / net.dt), 1))
 
@@ -74,13 +84,15 @@ labels[:, onset_idx:onset_idx + int(0.5 / net.dt), :] = 1
 
 labels = torch.Tensor(labels)
 
+rasters, labels = rasters.to(device), labels.to(device)
+
 # output, state, rec = net(torch.Tensor(rasters), record=True)
 
 # - Get the optimiser functions
-optimizer = Adam(net.parameters().astorch(), lr=1e-4)
+optimizer = Adam(net.parameters().astorch(), lr=1e-5)
 
 # - Loss function
-loss_fun = MSELoss()
+loss_fun = MSELoss().to(device=device)
 
 net.train()
 
@@ -92,7 +104,9 @@ for i in range(500):
     # events = events.to_dense()
     optimizer.zero_grad()
     
-    output, _, _ = net(rasters)
+    output, _, _ = net(rasters, record=False)
+    
+    output = output.to(device)
     
     loss = loss_fun(output, labels)
     
@@ -103,5 +117,5 @@ for i in range(500):
     
     loss_t.append(this_loss)
 
-
+t_axis = np.arange(0,t_stop, net.dt)
 
