@@ -146,6 +146,7 @@ def append_sample(
     audio_arr = group.audio
     spike_times_arr = group.spike_times
     spike_channels_arr = group.spike_channels
+    quality_rating_arr = group.quality_rating
 
     # ---- Validation -------------------------------------------------------
 
@@ -195,3 +196,4 @@ def append_sample(
     audio_arr.append(audio[np.newaxis, :].astype(audio_arr.atom.dtype))
     spike_times_arr.append(spike_times)
     spike_channels_arr.append(spike_channels)
+    quality_rating_arr.append(np.array([np.nan], dtype=np.float32))
