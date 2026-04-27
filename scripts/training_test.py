@@ -74,8 +74,6 @@ def to_raster(times : list, channels : list, t_start=0.0, t_stop=2.504, dt=0.001
     
 rasters = to_raster(dataset.root.train.spike_times[indices], dataset.root.train.spike_channels[indices],t_stop=t_stop,dt=0.001)
 
-sys.exit()
-
 labels = np.zeros((k, int(t_stop / net.dt), 1))
 
 onset_idx = int(1.0 / net.dt)
@@ -108,6 +106,8 @@ for i in range(500):
     
     output = output.to(device)
     
+    break
+    
     loss = loss_fun(output, labels)
     
     loss.backward()
@@ -119,3 +119,4 @@ for i in range(500):
 
 t_axis = np.arange(0,t_stop, net.dt)
 
+# plt.plot(t_axis, output.cpu().detach().mean(axis=0))
