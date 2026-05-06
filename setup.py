@@ -23,5 +23,5 @@ setup(
         'matplotlib',
         'scipy',
         'librosa',
-        'parquetdb',
-	'tables'],)
+	    'tables',
+        'sounddevice'],)

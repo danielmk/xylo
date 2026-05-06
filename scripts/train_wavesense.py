@@ -7,9 +7,10 @@ Created on Fri Apr 24 09:34:58 2026
 
 import tables
 import numpy as np
-from rockpool.nn.networks import SynNet
+from rockpool.nn.modules import LIFTorch  
+from rockpool.nn.networks.wavesense import WaveSenseNet
 from torch.optim import Adam, SGD
-from torch.nn import MSELoss
+from torch.nn import BCEWithLogitsLoss
 from rockpool.timeseries import TSEvent
 import librosa
 import matplotlib.pyplot as plt
@@ -17,6 +18,8 @@ from IPython.display import Audio
 import torch
 import sys
 import pdb
+from rockpool.parameters import Constant
+
 
 """HYPERPARAMETERS"""
 t_stop=2.504
@@ -27,7 +30,7 @@ torch.manual_seed(65)
 np.random.seed(68)
 
 dev = "cuda:0" if torch.cuda.is_available() else "cpu"
-device = torch.device(dev)
+device = torch.device("cpu")
 
 dataset_path = r'Y:\danielmk\okeon\dataset_split.h5'
 
@@ -49,18 +52,35 @@ noise_idx = np.where(
 
 rng = np.random.default_rng()
 
-net = SynNet(
-    n_channels = 16,
-    n_classes = 1,
-    size_hidden_layers = [140, 40, 40, 40, 40, 40],
-    time_constants_per_layer = [2, 2, 4, 4, 8, 8],
-    output='vmem',
-    threshold=0.5,
-    # train_time_constants=True,
-    # train_threshold=True,
-    )
+dilations = [2, 4, 8, 2, 4, 8, 2, 4, 8, 2, 4, 8]
+n_out_neurons = 1
+n_inp_neurons = 16
+n_neurons = 16
+kernel_size = 2
+tau_mem = 0.002
+base_tau_syn = 0.002
+tau_lp = 0.01
+threshold = 0.5
+dt = 0.001
 
-net = net.to(device)
+
+net = WaveSenseNet(
+    dilations=dilations,
+    n_classes=1,
+    n_channels_in=16,
+    n_channels_res=4,
+    n_channels_skip=8,
+    n_hidden=32,
+    kernel_size=2,
+    bias=Constant(0.0),
+    smooth_output=True,
+    tau_mem=Constant(0.002),
+    base_tau_syn=0.002,
+    tau_lp=tau_lp,
+    threshold=Constant(threshold),
+    neuron_model=LIFTorch,
+    dt=dt,
+).to(device)
 
 def build_all_rasters(train, t_stop, dt):
     n = train.spike_times.nrows
@@ -80,19 +100,16 @@ def build_all_rasters(train, t_stop, dt):
 
     return torch.from_numpy(rasters_np)
 
-def build_all_labels(train, species, t_stop, dt, label_amplitude=1.0):
+def build_all_labels(train, species):
     n = train.samples.nrows
-    n_steps = int(t_stop / dt)
 
-    labels = torch.zeros((n, n_steps, net.size_out), dtype=torch.float32)
+    labels = torch.zeros((n, net.size_out), dtype=torch.float32)
 
     for i, sample in enumerate(train.samples):
         if species[i] == "None":
             continue
 
-        start = int(1 / dt)
-        stop = start + int(sample["call_duration"] / dt)
-        labels[i, start:stop, 0] = label_amplitude
+        labels[i] = 1
 
     return labels
 
@@ -100,7 +117,7 @@ print("Building rasters...")
 all_rasters = build_all_rasters(train, t_stop, net.dt)
 
 print("Building labels...")
-all_labels = build_all_labels(train, species, t_stop, net.dt)
+all_labels = build_all_labels(train, species)
 
 # Move **once**
 all_rasters = all_rasters.to(device)
@@ -145,9 +162,11 @@ def save_checkpoint(
 
 optimizer = Adam(net.parameters().astorch(), lr=1e-5)
 
-loss_fun = MSELoss().to(device=device)
+loss_fun = BCEWithLogitsLoss().to(device=device)
 
 net.train()
+
+onset = int(1 / 0.001)
 
 loss_t = []
 for epoch in range(10000):
@@ -159,9 +178,11 @@ for epoch in range(10000):
     # events = events.to_dense()
     optimizer.zero_grad()
     
-    output, _, _ = net(rasters, record=False)
+    _, _, output = net(rasters, record=True)
+        
+    output = output['readout_output'][:,onset:,:].to(device)
     
-    output = output.to(device)
+    output = torch.max(output, dim=1)[0]
     
     loss = loss_fun(output, labels)
     
@@ -169,7 +190,7 @@ for epoch in range(10000):
     
     if epoch % 500 == 0:
         save_checkpoint(
-            rf"C:\Users\Daniel\repos\xylo\scripts\checkpoints\synnet-long_checkpoint_epoch_{epoch:04d}.pt",
+            rf"C:\Users\Daniel\repos\xylo\scripts\checkpoints\wavesense_checkpoint_epoch_{epoch:04d}.pt",
             net,
             optimizer,
             epoch,

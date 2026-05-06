@@ -4,7 +4,10 @@ Created on Fri Apr 24 09:34:58 2026
 
 @author: Daniel
 """
-
+import os
+import re
+import torch
+from pathlib import Path
 import tables
 import numpy as np
 from rockpool.nn.networks import SynNet
@@ -18,16 +21,32 @@ import torch
 import sys
 import pdb
 
+dev = "cuda:0" if torch.cuda.is_available() else "cpu"
+device = torch.device(dev)
+
 """HYPERPARAMETERS"""
 t_stop=2.504
 batch_size=64
 
+# ---------------------------------------------------------------------
+# MODEL + OPTIMIZER (must match original training!)
+# ---------------------------------------------------------------------
+
+net = SynNet(
+    n_channels=16,
+    n_classes=1,
+    size_hidden_layers=[140, 40, 40, 40, 40, 40],
+    time_constants_per_layer=[2, 2, 4, 4, 8, 8],
+    output="vmem",
+    threshold=0.5,
+    train_time_constants=True,
+    train_threshold=True,
+).to(device)
+
+
 """SETUP"""
 torch.manual_seed(65)
 np.random.seed(68)
-
-dev = "cuda:0" if torch.cuda.is_available() else "cpu"
-device = torch.device(dev)
 
 dataset_path = r'Y:\danielmk\okeon\dataset_split.h5'
 
@@ -48,19 +67,6 @@ noise_idx = np.where(
 )[0]
 
 rng = np.random.default_rng()
-
-net = SynNet(
-    n_channels = 16,
-    n_classes = 1,
-    size_hidden_layers = [140, 40, 40, 40, 40, 40],
-    time_constants_per_layer = [2, 2, 4, 4, 8, 8],
-    output='vmem',
-    threshold=0.5,
-    # train_time_constants=True,
-    # train_threshold=True,
-    )
-
-net = net.to(device)
 
 def build_all_rasters(train, t_stop, dt):
     n = train.spike_times.nrows
@@ -143,45 +149,85 @@ def save_checkpoint(
 
     torch.save(checkpoint, path)
 
+
+# ---------------------------------------------------------------------
+# CHECKPOINT UTILITIES
+# ---------------------------------------------------------------------
+
+CHECKPOINT_DIR = Path(r"C:\Users\Daniel\repos\xylo\scripts\checkpoints")
+
+def find_latest_checkpoint(checkpoint_dir, prefix="sntcth_checkpoint_epoch"):
+    """
+    Find the checkpoint with the largest epoch number.
+    """
+    pattern = re.compile(rf"{prefix}_(\d+)\.pt")
+
+    best_epoch = -1
+    best_ckpt = None
+
+    for p in checkpoint_dir.glob(f"{prefix}_*.pt"):
+        m = pattern.search(p.name)
+        if m:
+            epoch = int(m.group(1))
+            if epoch > best_epoch:
+                best_epoch = epoch
+                best_ckpt = p
+
+    return best_ckpt, best_epoch
+
 optimizer = Adam(net.parameters().astorch(), lr=1e-5)
+loss_fun = MSELoss().to(device)
 
-loss_fun = MSELoss().to(device=device)
+# ---------------------------------------------------------------------
+# LOAD LATEST CHECKPOINT (if any)
+# ---------------------------------------------------------------------
 
+ckpt_path, last_epoch = find_latest_checkpoint(CHECKPOINT_DIR)
+
+start_epoch = 0
+
+if ckpt_path is not None:
+    print(f"Resuming from checkpoint: {ckpt_path}")
+
+    checkpoint = torch.load(ckpt_path, map_location=device)
+
+    net.load_state_dict(checkpoint["model_state"])
+    optimizer.load_state_dict(checkpoint["optimizer_state"])
+
+    start_epoch = checkpoint["epoch"] + 1
+
+    print("Successfully restored model and optimizer")
+    print(f"Resuming at epoch {start_epoch}")
+else:
+    print("No checkpoint found — starting from scratch")
+    
 net.train()
 
-loss_t = []
-for epoch in range(10000):
-        
-    batch_idc = sample_batch(batch_size)
+for epoch in range(start_epoch, start_epoch + 8501):
 
+    batch_idc = sample_batch(batch_size)
     rasters, labels = load_batch(batch_idc)
 
-    # events = events.to_dense()
     optimizer.zero_grad()
-    
+
     output, _, _ = net(rasters, record=False)
     
-    output = output.to(device)
+    output=output.to(device)
     
     loss = loss_fun(output, labels)
-    
+
     this_loss = loss.item()
-    
-    if epoch % 500 == 0:
+
+    loss.backward()
+    optimizer.step()
+
+    if epoch % 50 == 0:
         save_checkpoint(
-            rf"C:\Users\Daniel\repos\xylo\scripts\checkpoints\synnet-long_checkpoint_epoch_{epoch:04d}.pt",
+            CHECKPOINT_DIR / f"sntcth_checkpoint_epoch_{epoch:04d}.pt",
             net,
             optimizer,
             epoch,
             this_loss,
         )
-    
-    loss.backward()
-    optimizer.step()
-
-
-
-    loss_t.append(this_loss)
 
     print(epoch, this_loss)
-

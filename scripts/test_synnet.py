@@ -18,6 +18,7 @@ import torch
 import sys
 import pdb
 from pathlib import Path
+from xylo import evaluation
 
 
 """HYPERPARAMETERS"""
@@ -37,7 +38,7 @@ dst = tables.open_file(dataset_path, mode="r")
 
 test = dst.root.test
 
-q = test.quality_rating[:]
+q_test = test.quality_rating[:]
 species_test = test.samples.col("species")
 species_test = np.array([s.decode() if isinstance(s, bytes) else s for s in species_test])
 
@@ -46,7 +47,7 @@ y_true_test[species_test=='Ruddy Kingfisher'] = 1
 
 train = dst.root.train
 
-q = train.quality_rating[:]
+q_train = train.quality_rating[:]
 species_train = train.samples.col("species")
 species_train = np.array([s.decode() if isinstance(s, bytes) else s for s in species_train])
 
@@ -62,7 +63,9 @@ net = SynNet(
     time_constants_per_layer = [2, 2, 4, 4, 8, 8],
     output='spikes',
     threshold=0.5,
-    threshold_out=1.5
+    threshold_out=1.5,
+    train_time_constants=True,
+    train_threshold=True,
     )
 
 net = net.to(device)
@@ -106,6 +109,12 @@ all_rasters_test = build_all_rasters(test, t_stop, net.dt)
 
 all_rasters_train = build_all_rasters(train, t_stop, net.dt)
 
+n_train = 500
+
+all_rasters_train = all_rasters_train[:n_train, :, :]
+
+y_true_train = y_true_train[:n_train]
+
 # Move **once**
 all_rasters_test = all_rasters_test.to(device)
 
@@ -138,11 +147,19 @@ def balanced_accuracy(y_true, y_pred):
 
     return 0.5 * (tpr + tnr)
 
+def predict_events(net, rasters):
+    output, _, _ = net(rasters, record=False)
+    return torch.any(
+        output[:, int(1.0 / net.dt):, 0] == 1,
+        axis=1
+    ).cpu().numpy()
+
+
 ckpt_dir = Path(r"C:\Users\Daniel\repos\xylo\scripts\checkpoints")
 
 synnet_ckpts = sorted(
     p for p in ckpt_dir.iterdir()
-    if p.is_file() and "synnet" in p.name
+    if p.is_file() and "synnet-long_" in p.name
 )
 
 
@@ -157,12 +174,31 @@ checkpoints = [
 ]
 
 
-threshold_grid = np.arange(1.0, 2.0, 0.1)
-balanced_training_accuracies = []
-balanced_test_accuracies = []
+threshold_grid = np.arange(1.0, 2.1, 0.1)
+
+CONFUSION_KEYS = [
+    "tpr", "fnr",
+    "tnr", "fpr",
+    "precision", "fdr",
+    "accuracy", "balanced_accuracy",
+    "TP", "TN", "FP", "FN",
+]
+
+training_metrics = []
+test_metrics = []
+
+epochs = []
+
+loss= []
+
 for ckpt in checkpoints:
-    curr_baltrainacc = []
-    curr_baltestacc = []
+
+    train_ckpt_metrics = {k: [] for k in CONFUSION_KEYS}
+    test_ckpt_metrics  = {k: [] for k in CONFUSION_KEYS}
+    
+    epochs.append(ckpt['epoch'])
+    loss.append(ckpt['loss'])
+
     for thr in threshold_grid:
 
         net = SynNet(
@@ -172,10 +208,10 @@ for ckpt in checkpoints:
             time_constants_per_layer = [2, 2, 4, 4, 8, 8],
             output='spikes',
             threshold=0.5,
-            threshold_out=thr
-            )
-
-        net = net.to(device)
+            threshold_out=thr,
+            # train_time_constants=True,
+            # train_threshold=True,
+            ).to(device)
         
         net.load_state_dict(ckpt["model_state"])
         net.eval()                # important!
@@ -183,37 +219,37 @@ for ckpt in checkpoints:
         output_train, _, _ = net(all_rasters_train, record=False)
         output_test, _, _ = net(all_rasters_test, record=False)
         
-        y_pred_test = torch.any(output_test[:, int(1.0 / net.dt):, 0] == 1, axis=1)
-        y_pred_train = torch.any(output_train[:, int(1.0 / net.dt):, 0] == 1, axis=1)
+        y_pred_train = predict_events(net, all_rasters_train)
+        y_pred_test  = predict_events(net, all_rasters_test)
+
+        train_rates = evaluation.confusion_rates(y_true_train, y_pred_train)
+        test_rates = evaluation.confusion_rates(y_true_test, y_pred_test)
         
-        ba_test = balanced_accuracy(y_true_test, np.array(y_pred_test))
-        ba_train = balanced_accuracy(y_true_train, np.array(y_pred_train))
-        
-        curr_baltrainacc.append(ba_train)
-        curr_baltestacc.append(ba_test)
-        print(f"Threshold: {thr}, Epoch: {ckpt['epoch']}, Train BA: {ba_train}, Test BA: {ba_test}")
 
-    balanced_training_accuracies.append(curr_baltrainacc)
-    balanced_test_accuracies.append(curr_baltestacc)
+        # Store everythig
+        for k in CONFUSION_KEYS:
+            train_ckpt_metrics[k].append(train_rates[k])
+            test_ckpt_metrics[k].append(test_rates[k])
 
-
-ckpt = torch.load(
-    r"C:\Users\Daniel\repos\xylo\scripts\checkpoints\synnet_checkpoint_epoch_0950.pt",
-    map_location="cpu")   # safe, works even if it was trained on GPU
-
-
-net.load_state_dict(ckpt["model_state"])
-net.eval()                # important!
+        print(
+            f"Epoch {ckpt['epoch']:>3} | "
+            f"thr={thr:.2f} | "
+            f"BA train={train_rates['balanced_accuracy']:.3f}, "
+            f"test={test_rates['balanced_accuracy']:.3f} | "
+            f"FPR test={test_rates['fpr']:.3f}"
+        )
 
 
-output_train, _, _ = net(all_rasters_train, record=False)
+    training_metrics.append(train_ckpt_metrics)
+    test_metrics.append(test_ckpt_metrics)
 
-output_test, _, _ = net(all_rasters_test, record=False)
 
-y_pred_test = torch.any(output_test[:, int(1.0 / net.dt):, 0] == 1, axis=1)
-
-y_pred_train = torch.any(output_train[:, int(1.0 / net.dt):, 0] == 1, axis=1)
-
-ba_test = balanced_accuracy(y_true_test, np.array(y_pred_test))
-
-ba_train = balanced_accuracy(y_true_train, np.array(y_pred_train))
+np.savez(
+    r"C:\Users\Daniel\repos\xylo\results\synnet-long_threshold_checkpoint_confusion_metric.npz",
+    thresholds=threshold_grid,
+    loss=loss,
+    epochs=epochs,
+    training_metrics=training_metrics,
+    test_metrics=test_metrics,
+    allow_pickle=True
+)

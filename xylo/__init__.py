@@ -4,6 +4,7 @@ from typing import Union, Optional
 from . import config
 from . import features
 from . import datastructure
+from . import training
 
 @dataclass
 class Config():
