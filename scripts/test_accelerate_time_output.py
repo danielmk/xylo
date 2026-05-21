@@ -45,21 +45,12 @@ species_test = np.array([s.decode() if isinstance(s, bytes) else s for s in spec
 y_true_test = np.zeros((species_test.shape[0]))
 y_true_test[species_test=='Ruddy Kingfisher'] = 1
 
-train = dst.root.train
-
-q_train = train.quality_rating[:]
-species_train = train.samples.col("species")
-species_train = np.array([s.decode() if isinstance(s, bytes) else s for s in species_train])
-
-y_true_train = np.zeros((species_train.shape[0]))
-y_true_train[species_train=='Ruddy Kingfisher'] = 1
-
 rng = np.random.default_rng()
 
 net = SynNet(
     n_channels = 16,
     n_classes = 1,
-    size_hidden_layers = [128, 64, 40, 40, 40, 40],
+    size_hidden_layers = [140, 40, 40, 40, 40, 40],
     time_constants_per_layer = [2, 2, 4, 4, 8, 8],
     output='spikes',
     threshold=0.5,
@@ -107,18 +98,10 @@ def build_all_labels(train, species, t_stop, dt, label_amplitude=1.0):
 print("Building rasters...")
 all_rasters_test = build_all_rasters(test, t_stop, net.dt)
 
-all_rasters_train = build_all_rasters(train, t_stop, net.dt)
-
 n_train = 500
-
-all_rasters_train = all_rasters_train[:n_train, :, :]
-
-y_true_train = y_true_train[:n_train]
 
 # Move **once**
 all_rasters_test = all_rasters_test.to(device)
-
-all_rasters_train = all_rasters_train.to(device)
 
 def to_raster(times : list, channels : list, t_start=0.0, t_stop=2.504, dt=0.001):
     
@@ -147,35 +130,6 @@ def balanced_accuracy(y_true, y_pred):
 
     return 0.5 * (tpr + tnr)
 
-def predict_events(net, rasters):
-    output, _, _ = net(rasters, record=False)
-    return torch.any(
-        output[:, int(1.0 / net.dt):, 0] == 1,
-        axis=1
-    ).cpu().numpy()
-
-ckpt_dir = Path(r"C:\Users\Daniel\repos\xylo\scripts\checkpoints")
-
-synnet_ckpts = sorted(
-    p for p in ckpt_dir.iterdir()
-    if p.is_file() and "snthv2_" in p.name
-)
-
-
-synnet_ckpts = sorted(
-    synnet_ckpts,
-    key=lambda p: torch.load(p, map_location="cpu").get("epoch", 0)
-)
-
-checkpoints = [
-    torch.load(path, map_location="cpu")
-    for path in synnet_ckpts
-]
-
-checkpoints = [x for x in checkpoints if x['epoch'] % 500 == 0]
-
-threshold_grid = np.arange(1.0, 2.1, 0.1)
-
 CONFUSION_KEYS = [
     "tpr", "fnr",
     "tnr", "fpr",
@@ -184,72 +138,14 @@ CONFUSION_KEYS = [
     "TP", "TN", "FP", "FN",
 ]
 
-training_metrics = []
-test_metrics = []
+xylo_output = np.load(r'C:\Users\Daniel\repos\xylo\results\synnet_5000_accelerate_time_xylo_spikes.npz')
 
-epochs = []
+xylo_output = torch.Tensor(xylo_output['xylo_output'])
 
-loss= []
+rates_list = []
 
-for ckpt in checkpoints:
+for idx, xo in enumerate(xylo_output):
+    y_pred = torch.any(xo[:, int(1.0 / net.dt):, 0] == 1, axis=1).cpu().numpy()
+    rates = evaluation.confusion_rates(y_true_test, y_pred)
+    rates_list.append(rates)
 
-    train_ckpt_metrics = {k: [] for k in CONFUSION_KEYS}
-    test_ckpt_metrics  = {k: [] for k in CONFUSION_KEYS}
-    
-    epochs.append(ckpt['epoch'])
-    loss.append(ckpt['loss'])
-
-    for thr in threshold_grid:
-
-        net = SynNet(
-            n_channels = 16,
-            n_classes = 1,
-            size_hidden_layers = [128, 64, 40, 40, 40, 40],
-            time_constants_per_layer = [2, 2, 4, 4, 8, 8],
-            output='spikes',
-            threshold=0.5,
-            threshold_out=thr,
-            #train_time_constants=True,
-            train_threshold=True,
-            ).to(device)
-        
-        net.load_state_dict(ckpt["model_state"])
-        net.eval()                # important!
-        
-        output_train, _, _ = net(all_rasters_train, record=False)
-        output_test, _, _ = net(all_rasters_test, record=False)
-        
-        y_pred_train = predict_events(net, all_rasters_train)
-        y_pred_test  = predict_events(net, all_rasters_test)
-
-        train_rates = evaluation.confusion_rates(y_true_train, y_pred_train)
-        test_rates = evaluation.confusion_rates(y_true_test, y_pred_test)
-        
-
-        # Store everythig
-        for k in CONFUSION_KEYS:
-            train_ckpt_metrics[k].append(train_rates[k])
-            test_ckpt_metrics[k].append(test_rates[k])
-
-        print(
-            f"Epoch {ckpt['epoch']:>3} | "
-            f"thr={thr:.2f} | "
-            f"BA train={train_rates['balanced_accuracy']:.3f}, "
-            f"test={test_rates['balanced_accuracy']:.3f} | "
-            f"FPR test={test_rates['fpr']:.3f}"
-        )
-
-
-    training_metrics.append(train_ckpt_metrics)
-    test_metrics.append(test_ckpt_metrics)
-
-
-np.savez(
-    r"C:\Users\Daniel\repos\xylo\results\snthv2_threshold_checkpoint_confusion_metric.npz",
-    thresholds=threshold_grid,
-    loss=loss,
-    epochs=epochs,
-    training_metrics=training_metrics,
-    test_metrics=test_metrics,
-    allow_pickle=True
-)

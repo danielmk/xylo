@@ -22,13 +22,14 @@ from xylo import evaluation, plotting
 import matplotlib.pyplot as plt
 import pandas as pd
 
-
-matrix_path = {"synnet": r"C:\Users\Daniel\repos\xylo\results\synnet_threshold_checkpoint_confusion_metric.npz",
+r"""
+matrix_path = {"synnet-long": r"C:\Users\Daniel\repos\xylo\results\synnet-long_threshold_checkpoint_confusion_metric.npz",
                "sntc": r"C:\Users\Daniel\repos\xylo\results\sntc_threshold_checkpoint_confusion_metric.npz",
-               "sntcth": r"C:\Users\Daniel\repos\xylo\results\sntcth_threshold_checkpoint_confusion_metric.npz",
-               "synnet-long": r"C:\Users\Daniel\repos\xylo\results\synnet-long_threshold_checkpoint_confusion_metric.npz"
-            }
+               "sntcth": r"C:\Users\Daniel\repos\xylo\results\sntcth_threshold_checkpoint_confusion_metric.npz",}
+"""
 
+matrix_path = {"synnetv2": r"C:\Users\Daniel\repos\xylo\results\synnetv2_threshold_checkpoint_confusion_metric.npz",
+               "snthv2": r"C:\Users\Daniel\repos\xylo\results\snthv2_threshold_checkpoint_confusion_metric.npz",}
 
 
 CONFUSION_KEYS = [
@@ -69,7 +70,7 @@ for idx, k in enumerate(matrix_path.keys()):
         shading="nearest",
         vmin=0.5,
         vmax=1.0,
-        cmap="Greys_r")
+        cmap="viridis")
     
     
     ax[idx].set_xlabel("Threshold")
@@ -136,8 +137,8 @@ best_df = pd.DataFrame(best_dict)
 
 best_df.to_csv(r'C:\Users\Daniel\repos\xylo\results\best_balanced_accuracy.csv')
 
-test_dict['synnet-long']['balanced_accuracy'].argmax()
-row, col = np.unravel_index(flat_idx, test_dict['synnet-long']['balanced_accuracy'].shape)
+# test_dict['synnet-long']['balanced_accuracy'].argmax()
+# row, col = np.unravel_index(flat_idx, test_dict['synnet-long']['balanced_accuracy'].shape)
 
 # fig.colorbar(im, ax=ax[0], label="Balanced accuracy")
 

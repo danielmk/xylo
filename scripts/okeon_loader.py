@@ -20,14 +20,12 @@ import xylo
 from scipy.signal import butter, filtfilt, hilbert
 from scipy.ndimage import uniform_filter1d
 import rockpool
-from rockpool.devices.xylo.syns65302 import AFESimExternal
-from rockpool.devices.xylo.syns65302 import AFESimPDM
 
 datapath = xylo.Config.okeon_bucket
 
 detections = pd.read_csv(datapath / "2sp_detect_forDaniel.csv")
 
-filename = "CHATANOP_20200508_063000.flac"
+filename = "OKUFR_20181214_180000.flac"
 
 location, date, number = filename.split('_')
 
@@ -42,11 +40,11 @@ curr_detections = detections[(detections['Filename'] == filename) & (detections[
 merged_intervals = xylo.features.merge_intervals_pandas(curr_detections)
 
 # Target band
-f_low = 1200.0   # Hz
-f_high = 2500.0  # Hz
+f_low = 2000.0   # Hz
+f_high = 3500.0  # Hz
 
 # Envelope / framing parameters
-smooth_ms = 100           # smoothing window for envelope (ms)
+smooth_ms = 500           # smoothing window for envelope (ms)
 frame_hop_ms = 10        # used for time axis spacing (ms); not required by librosa here
 
 # Event logic
@@ -65,8 +63,8 @@ thr = xylo.features.robust_threshold(env_smooth, k=threshold_k)
 
 precise_intervals = []
 for r in merged_intervals.iloc:
-    start_idx = r['Time_start'] * sr
-    end_idx = r['Time_End'] * sr
+    start_idx = int(r['Time_start'] * sr)
+    end_idx = int(r['Time_End'] * sr)
     curr_interval = env_smooth[start_idx: end_idx]
     # on_idx, off_idx = xylo.features.detect_regions(
     #     curr_interval, sr, hop_sec, thr, min_event_dur, min_silence

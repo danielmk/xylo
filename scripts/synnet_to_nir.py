@@ -62,24 +62,12 @@ batch_size=64
 # MODEL + OPTIMIZER (must match original training!)
 # ---------------------------------------------------------------------
 
-net = SynNet(
-    n_channels=16,
-    n_classes=1,
-    size_hidden_layers=[140, 40, 40, 40, 40, 40],
-    time_constants_per_layer=[2, 2, 4, 4, 8, 8],
-    output="spikes",
-    threshold=0.5,
-    threshold_out=1.2,
-    # train_time_constants=True,
-    # train_threshold=True,
-
-)
 
 ckpt_dir = Path(r"/home/danielmk/repos/xylo/scripts/checkpoints")
 
 synnet_ckpts = sorted(
     p for p in ckpt_dir.iterdir()
-    if p.is_file() and "sntc" in p.name
+    if p.is_file() and "synnet-long" in p.name
 )
 
 synnet_ckpts = sorted(
@@ -104,7 +92,7 @@ net = SynNet(
     output="spikes",
     threshold=0.5,
     threshold_out=1.2,
-    train_time_constants=True,
+    #train_time_constants=True,
     # train_threshold=True,
 )
 
@@ -112,6 +100,6 @@ net.load_state_dict(curr_ckpt["model_state"])
 
 nir_graph = to_nir(net)
 
-nir.write("sntc_epoch_5500.nir", nir_graph)
+# nir.write("sntc_epoch_5500.nir", nir_graph)
 
 

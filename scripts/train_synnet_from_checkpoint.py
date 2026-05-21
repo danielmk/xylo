@@ -40,7 +40,7 @@ net = SynNet(
     output="vmem",
     threshold=0.5,
     train_time_constants=True,
-    train_threshold=True,
+    # train_threshold=True,
 ).to(device)
 
 
@@ -156,7 +156,7 @@ def save_checkpoint(
 
 CHECKPOINT_DIR = Path(r"C:\Users\Daniel\repos\xylo\scripts\checkpoints")
 
-def find_latest_checkpoint(checkpoint_dir, prefix="sntcth_checkpoint_epoch"):
+def find_latest_checkpoint(checkpoint_dir, prefix="sntc_checkpoint_epoch"):
     """
     Find the checkpoint with the largest epoch number.
     """
@@ -223,7 +223,7 @@ for epoch in range(start_epoch, start_epoch + 8501):
 
     if epoch % 50 == 0:
         save_checkpoint(
-            CHECKPOINT_DIR / f"sntcth_checkpoint_epoch_{epoch:04d}.pt",
+            CHECKPOINT_DIR / f"sntc_checkpoint_epoch_{epoch:04d}.pt",
             net,
             optimizer,
             epoch,

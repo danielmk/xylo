@@ -20,11 +20,14 @@ import rockpool.transform.quantize_methods as q
 from rockpool.devices.xylo.syns65302 import xa3_devkit_utils as hdu
 from rockpool.devices.xylo.syns65302 import XyloSamna
 import samna
+import sys
 
 
 dataset_path = r'Y:\danielmk\okeon\dataset_split.h5'
 
 dst = tables.open_file(dataset_path, mode="r")
+
+sys.exit()
 
 high_quality = np.argwhere(dst.root.train.quality_rating.read() == 3)[:, 0]
 
@@ -135,6 +138,8 @@ xa3 = xylo_nodes[0]
 Xmod = XyloSamna(device=xa3, config=xylo_conf, dt = net.dt)
 
 out, _, rec = Xmod(all_rasters, record=True)
+
+
 
 # output, out2, out3 = net(all_rasters, record=True)
 
