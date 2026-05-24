@@ -17,8 +17,7 @@ import xylo
 from pathlib import Path
 from rockpool.devices.xylo.syns65302 import config_from_specification, mapper
 import rockpool.transform.quantize_methods as q
-from rockpool.devices.xylo.syns65302 import xa3_devkit_utils as hdu
-from rockpool.devices.xylo.syns65302 import XyloSamna, XyloSim
+from rockpool.devices.xylo.syns65302 import XyloSim
 import samna
 import pickle
 import sys
@@ -98,14 +97,17 @@ net.load_state_dict(curr_ckpt["model_state"])
 
 spec = mapper(net.as_graph(), weight_dtype='float', threshold_dtype='float', dash_dtype='float')
 
+spec_pre = spec
+
+spec.update(q.global_quantize(**spec))
 
 fig, ax = plt.subplots(3,1)
 fig.suptitle("Pre Quantization")
-ax[0].hist(spec['weights_in'].flatten(), bins=100)
-ax[1].hist(spec['weights_rec'].flatten()[spec['weights_rec'].flatten() !=0], bins=2**8)
-ax[2].hist(spec['weights_out'].flatten(), bins=100)
+ax[0].hist(spec_pre['weights_in'].flatten(), bins=100)
+ax[1].hist(spec_pre['weights_rec'].flatten()[spec_pre['weights_rec'].flatten() !=0], bins=2**8)
+ax[2].hist(spec_pre['weights_out'].flatten(), bins=100)
 # quantizing the model
-spec.update(q.global_quantize(**spec))
+
 # quantized_spec = q.global_quantize(**spec, bits_per_weight = 20)
 
 fig, ax = plt.subplots(3,1)

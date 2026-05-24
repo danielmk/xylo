@@ -41,6 +41,7 @@ test = dst.root.test
 q_test = test.quality_rating[:]
 species_test = test.samples.col("species")
 species_test = np.array([s.decode() if isinstance(s, bytes) else s for s in species_test])
+kingfisher_samples = species_test == 'Ruddy Kingfisher'
 
 y_true_test = np.zeros((species_test.shape[0]))
 y_true_test[species_test=='Ruddy Kingfisher'] = 1
@@ -50,7 +51,7 @@ rng = np.random.default_rng()
 net = SynNet(
     n_channels = 16,
     n_classes = 1,
-    size_hidden_layers = [140, 40, 40, 40, 40, 40],
+    size_hidden_layers = [128, 64, 40, 40, 40, 40],
     time_constants_per_layer = [2, 2, 4, 4, 8, 8],
     output='spikes',
     threshold=0.5,
@@ -98,8 +99,6 @@ def build_all_labels(train, species, t_stop, dt, label_amplitude=1.0):
 print("Building rasters...")
 all_rasters_test = build_all_rasters(test, t_stop, net.dt)
 
-n_train = 500
-
 # Move **once**
 all_rasters_test = all_rasters_test.to(device)
 
@@ -138,7 +137,7 @@ CONFUSION_KEYS = [
     "TP", "TN", "FP", "FN",
 ]
 
-xylo_output = np.load(r'C:\Users\Daniel\repos\xylo\results\synnet_5000_accelerate_time_xylo_spikes.npz')
+xylo_output = np.load(r'C:\Users\Daniel\repos\xylo\results\synnetv2_4000_accelerate_time_xylo_spikes_with_power.npz',allow_pickle=True)
 
 xylo_output = torch.Tensor(xylo_output['xylo_output'])
 
@@ -148,4 +147,9 @@ for idx, xo in enumerate(xylo_output):
     y_pred = torch.any(xo[:, int(1.0 / net.dt):, 0] == 1, axis=1).cpu().numpy()
     rates = evaluation.confusion_rates(y_true_test, y_pred)
     rates_list.append(rates)
+    
+    kingfisher_spikes = xo[kingfisher_samples, int(1.0 / net.dt):, 0].sum(axis=1)
+    
+    noise_spikes = xo[~kingfisher_samples, int(1.0 / net.dt):, 0].sum(axis=1)
+    
 
