@@ -20,40 +20,34 @@ import rockpool.transform.quantize_methods as q
 from rockpool.devices.xylo.syns65302 import xa3_devkit_utils as hdu
 from rockpool.devices.xylo.syns65302 import XyloSamna
 import samna
+import pickle
 import sys
+import time
+import pdb
 
-
-dataset_path = r'Y:\danielmk\okeon\dataset_split.h5'
+dataset_path = r'dataset_split.h5'
 
 dst = tables.open_file(dataset_path, mode="r")
 
-sys.exit()
+high_quality = np.argwhere(dst.root.test.quality_rating.read() == 3)[:, 0]
 
-high_quality = np.argwhere(dst.root.train.quality_rating.read() == 3)[:, 0]
+mid_quality = np.argwhere(dst.root.test.quality_rating.read() == 2)[:, 0]
+
+noise_quality = np.argwhere(np.isnan(dst.root.test.quality_rating.read()))[:, 0]
 
 # example_idx = high_quality[2]
 example_idx = 1
 
 sr=44100
 
-audio = dst.root.train.audio[example_idx]
-
-dev = "cuda:0" if torch.cuda.is_available() else "cpu"
-device = torch.device('cpu')
-
 test = dst.root.test
 
-quality = test.quality_rating[:]
-species = test.samples.col("species")
-species = np.array([s.decode() if isinstance(s, bytes) else s for s in species])
+q_test = test.quality_rating[:]
+species_test = test.samples.col("species")
+species_test = np.array([s.decode() if isinstance(s, bytes) else s for s in species_test])
 
-signal_idx = np.where(
-    (quality > 1) & (species != "None")
-)[0]
-
-noise_idx = np.where(
-    species == "None"
-)[0]
+y_true_test = np.zeros((species_test.shape[0]))
+y_true_test[species_test=='Ruddy Kingfisher'] = 1
 
 rng = np.random.default_rng()
 
@@ -68,25 +62,21 @@ batch_size=64
 net = SynNet(
     n_channels=16,
     n_classes=1,
-    size_hidden_layers=[140, 40, 40, 40, 40, 40],
+    size_hidden_layers=[128, 64, 40, 40, 40, 40],
     time_constants_per_layer=[2, 2, 4, 4, 8, 8],
     output="spikes",
     threshold=0.5,
     threshold_out=1.2,
     # train_time_constants=True,
     # train_threshold=True,
+)
 
-).to(device)
-
-net.eval()
-
-ckpt_dir = Path(r"C:\Users\Daniel\repos\xylo\scripts\checkpoints")
+ckpt_dir = Path(r"/home/danielmk/repos/xylo/scripts/checkpoints")
 
 synnet_ckpts = sorted(
     p for p in ckpt_dir.iterdir()
-    if p.is_file() and "synnet-long_" in p.name
+    if p.is_file() and "synnetv2_" in p.name
 )
-
 
 synnet_ckpts = sorted(
     synnet_ckpts,
@@ -98,7 +88,7 @@ checkpoints = [
     for path in synnet_ckpts
 ]
 
-epoch = 5000
+epoch = 4000
 
 curr_ckpt = [x for x in checkpoints if x['epoch'] == epoch][0]
 
@@ -111,37 +101,88 @@ np.random.seed(68)
 print("Building rasters...")
 all_rasters = xylo.training.build_all_rasters(test, t_stop, net.dt, net.size_in)
 
-print("Building labels...")
-all_labels = xylo.training.build_all_labels(test, species, t_stop, net.dt, net.size_out)
-
 # Move **once**
-all_rasters = all_rasters.to(device)
-all_labels = all_labels.to(device)
+all_rasters = all_rasters
 
-"""QUANTIZE AND BULID XYLO 3 CONFIGURATION"""
-# getting the model specifications using the mapper function
-spec = mapper(net.as_graph(), weight_dtype='float', threshold_dtype='float', dash_dtype='float')
-# quantizing the model
-spec.update(q.channel_quantize(**spec))
+thresholds = np.arange(1.8, 1.85, 0.1)
 
-xylo_conf, is_valid, msg = config_from_specification(**spec)
+quantized_thresholds = []
 
-# Getting the connected devices and choosing XyloAudio 3 board
-xylo_nodes = hdu.find_xylo_a3_boards()
+all_outputs = []
+all_states = []
+all_recs = []
 
-if len(xylo_nodes) == 0:
-    raise ValueError('A connected XyloAudio 3 development board is required for this tutorial.')
+for th in thresholds:
+    print(f"Threshold: {th}")
+    net = SynNet(
+        n_channels=16,
+        n_classes=1,
+        size_hidden_layers=[128, 64, 40, 40, 40, 40],
+        time_constants_per_layer=[2, 2, 4, 4, 8, 8],
+        output="spikes",
+        threshold=0.5,
+        threshold_out=th,
+        # train_time_constants=True,
+        # train_threshold=True,
+    )
+    
+    # sys.exit()
+    
+    net.load_state_dict(curr_ckpt["model_state"])
+    
+    """QUANTIZE AND BULID XYLO 3 CONFIGURATION"""
+    # getting the model specifications using the mapper function
+    spec = mapper(net.as_graph(), weight_dtype='float', threshold_dtype='float', dash_dtype='float')
 
-xa3 = xylo_nodes[0]
+    # quantizing the model
+    # spec.update(q.channel_quantize(**spec))
+    spec.update(q.global_quantize(**spec))
+    
+    quantized_threshold = spec['threshold_out']
+    
+    print(f"Threshold quantized: {quantized_threshold}")
+    
+    quantized_thresholds.append(quantized_threshold)
+    
+    xylo_conf, is_valid, msg = config_from_specification(**spec)
+    
+    # Getting the connected devices and choosing XyloAudio 3 board
+    xylo_nodes = hdu.find_xylo_a3_boards()
+    
+    if len(xylo_nodes) == 0:
+        raise ValueError('A connected XyloAudio 3 development board is required for this tutorial.')
+    
+    xa3 = xylo_nodes[0]
+    
+    # Instantiating XyloSamna and deploying to the dev kit; make sure your dt corresponds to the dt of your input data
+    Xmod = XyloSamna(device=xa3, config=xylo_conf, dt=net.dt)
+    
+    time.sleep(5)
 
-# Instantiating XyloSamna and deploying to the dev kit; make sure your dt corresponds to the dt of your input data
-Xmod = XyloSamna(device=xa3, config=xylo_conf, dt = net.dt)
+    out_list = []
+    state_list = []
+    rec_list = []
+    
+    for idx, raster in enumerate(all_rasters):
+        print(f"Curr idx: {idx}")
+        out, state, rec = Xmod(raster, record=False, record_power=True)
+        out_list.append(out)
+        state_list.append(state)
+        rec_list.append(rec)
+    
+    all_outputs.append(out_list)
+    all_states.append(state_list)
+    all_recs.append(rec_list)
+    
 
-out, _, rec = Xmod(all_rasters, record=True)
-
-
-
-# output, out2, out3 = net(all_rasters, record=True)
+np.savez(f'synnetv2_{epoch}_accelerate_time_xylo_spikes_with_power.npz',
+         xylo_output=all_outputs,
+         thresholds=thresholds,
+         quantized_thresholds=quantized_thresholds,
+         states=all_states,
+         recs=all_recs)
+    
+    # output, out2, out3 = net(all_rasters, record=True)
 
 
 

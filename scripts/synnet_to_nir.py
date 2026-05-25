@@ -18,7 +18,7 @@ from pathlib import Path
 from rockpool.devices.xylo.syns65302 import config_from_specification, mapper
 import rockpool.transform.quantize_methods as q
 from rockpool.devices.xylo.syns65302 import xa3_devkit_utils as hdu
-from rockpool.devices.xylo.syns65302 import XyloSamna
+from rockpool.devices.xylo.syns65302 import XyloSamna, XyloSim
 import samna
 import pickle
 import sys
@@ -61,13 +61,11 @@ batch_size=64
 # ---------------------------------------------------------------------
 # MODEL + OPTIMIZER (must match original training!)
 # ---------------------------------------------------------------------
-
-
 ckpt_dir = Path(r"/home/danielmk/repos/xylo/scripts/checkpoints")
 
 synnet_ckpts = sorted(
     p for p in ckpt_dir.iterdir()
-    if p.is_file() and "synnet-long" in p.name
+    if p.is_file() and "sntc" in p.name
 )
 
 synnet_ckpts = sorted(
@@ -92,14 +90,24 @@ net = SynNet(
     output="spikes",
     threshold=0.5,
     threshold_out=1.2,
-    #train_time_constants=True,
+    train_time_constants=True,
     # train_threshold=True,
 )
 
 net.load_state_dict(curr_ckpt["model_state"])
 
+spec = mapper(net.as_graph(), weight_dtype='float', threshold_dtype='float', dash_dtype='float')
+sys.exit()
+# quantizing the model
+# spec.update(q.channel_quantize(**spec))
+quantized_spec = q.global_quantize(**spec, bits_per_weight = 20)
+
+spec.update(q.global_quantize(**spec, bits_per_weight = 20))
+
+quantized_net = XyloSim.from_specification(**spec)
+
 nir_graph = to_nir(net)
 
-# nir.write("sntc_epoch_5500.nir", nir_graph)
+nir.write("sntc_epoch_5500.nir", nir_graph)
 
 
