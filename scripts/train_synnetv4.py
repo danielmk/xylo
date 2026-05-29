@@ -8,7 +8,7 @@ Created on Fri Apr 24 09:34:58 2026
 import tables
 import numpy as np
 from rockpool.nn.networks import SynNet
-from torch.optim import Adam, SGD
+from torch.optim import AdamW, SGD, Adam
 from torch.nn import MSELoss
 from rockpool.timeseries import TSEvent
 import librosa
@@ -40,7 +40,6 @@ q = train.quality_rating[:]
 species = train.samples.col("species")
 species = np.array([s.decode() if isinstance(s, bytes) else s for s in species])
 
-
 signal_idx = np.where(
     (q > 1) & (species != "None")
 )[0]
@@ -49,19 +48,17 @@ noise_idx = np.where(
     species == "None"
 )[0]
 
-rng = np.random.default_rng()
-
-net = xylo.nets.synnetv3(output='vmem').to(device)
-
-net = net.to(device)
+net = xylo.nets.synnetv4(output='vmem').to(device)
 
 print("Building rasters...")
 all_rasters = xylo.training.build_all_rasters(train, t_stop, net.dt, net.size_in).to(device)
 
 print("Building labels...")
-all_labels = xylo.training.build_all_labels(train, species, t_stop, net.dt, net.size_out, label_amplitude=1.5).to(device)
+all_labels = xylo.training.build_all_labels(train, species, t_stop, net.dt, net.size_out, label_amplitude=1.0).to(device)
 
-optimizer = Adam(net.parameters().astorch(), lr=1e-5)
+print("Labels Done.")
+
+optimizer = AdamW(net.parameters().astorch(), lr=1e-5, weight_decay=1e-4)
 
 loss_fun = MSELoss().to(device=device)
 
@@ -88,7 +85,7 @@ for epoch in range(10000):
     
     if epoch % 50 == 0:
         xylo.training.save_checkpoint(
-            rf"C:\Users\Daniel\repos\xylo\scripts\checkpoints\synnetv3_checkpoint_epoch_{epoch:04d}.pt",
+            rf"C:\Users\Daniel\repos\xylo\scripts\checkpoints\synnetv4_checkpoint_epoch_{epoch:04d}.pt",
             net,
             optimizer,
             epoch,

@@ -29,7 +29,7 @@ matrix_path = {"synnet-long": r"C:\Users\Daniel\repos\xylo\results\synnet-long_t
 """
 
 matrix_path = {"synnetv2": r"C:\Users\Daniel\repos\xylo\results\synnetv2_threshold_checkpoint_confusion_metric.npz",
-               "snthv2": r"C:\Users\Daniel\repos\xylo\results\snthv2_threshold_checkpoint_confusion_metric.npz",}
+               "synnetv3": r"C:\Users\Daniel\repos\xylo\results\synnetv3_threshold_checkpoint_confusion_metric.npz",}
 
 
 CONFUSION_KEYS = [
@@ -97,6 +97,8 @@ for idx, k in enumerate(matrix_path.keys()):
 ax.legend(matrix_path.keys())
 ax.set_xlabel("False Positive Rate")
 ax.set_ylabel("True Positive Rate")
+ax.set_ylim((0, 1.0))
+ax.set_xlim((0, 1.0))
 
 fig, ax = plt.subplots(1)
 
@@ -105,7 +107,9 @@ for idx, k in enumerate(matrix_path.keys()):
 
 ax.legend(matrix_path.keys())
 ax.set_xlabel("False Positive Rate")
-ax.set_ylabel("True Positive Rate.")
+ax.set_ylabel("True Positive Rate")
+ax.set_ylim((0, 1.0))
+ax.set_xlim((0, 1.0))
 
 """FIND BEST CHECKPOINTS"""
 maxima = {}

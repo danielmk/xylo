@@ -7,6 +7,14 @@ Created on Mon Apr 27 13:22:50 2026
 
 import numpy as np
 
+CONFUSION_KEYS = [
+    "tpr", "fnr",
+    "tnr", "fpr",
+    "precision", "fdr",
+    "accuracy", "balanced_accuracy",
+    "TP", "TN", "FP", "FN",
+]
+
 def confusion_rates(y_true, y_pred):
     """
     Compute all relevant binary classification rates
@@ -56,3 +64,4 @@ def confusion_rates(y_true, y_pred):
         "FP": FP,
         "FN": FN,
     }
+

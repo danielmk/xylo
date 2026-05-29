@@ -206,12 +206,12 @@ for ckpt in checkpoints:
         net = SynNet(
             n_channels = 16,
             n_classes = 1,
-            size_hidden_layers = [128, 96, 64, 64, 64, 64],
-            time_constants_per_layer = [2, 2, 4, 4, 8, 8],
+            size_hidden_layers = [128, 96, 96, 96, 66, 66],
+            time_constants_per_layer = [2, 2, 4, 4, 6, 6],
             output='spikes',
             threshold=1.0,
             threshold_out=thr,
-            #tau_syn_base=2e-2,
+            tau_syn_base=1e-2,
             tau_syn_out=2e-2,
             tau_mem=2e-2,
             #train_time_constants=True,
@@ -250,7 +250,7 @@ for ckpt in checkpoints:
 
 
 np.savez(
-    r"C:\Users\Daniel\repos\xylo\results\synnetv3_threshold_checkpoint_confusion_metric.npz",
+    r"C:\Users\Daniel\repos\xylo\results\synnetv4_threshold_checkpoint_confusion_metric.npz",
     thresholds=threshold_grid,
     loss=loss,
     epochs=epochs,

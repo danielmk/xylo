@@ -17,6 +17,7 @@ from IPython.display import Audio
 import torch
 import sys
 import pdb
+import xylo
 
 """HYPERPARAMETERS"""
 t_stop=2.504
@@ -47,101 +48,15 @@ noise_idx = np.where(
     species == "None"
 )[0]
 
-rng = np.random.default_rng()
-
-net = SynNet(
-    n_channels = 16,
-    n_classes = 1,
-    size_hidden_layers = [128, 64, 40, 40, 40, 40],
-    time_constants_per_layer = [2, 2, 4, 4, 8, 8],
-    output='vmem',
-    threshold=0.5,
-    #train_time_constants=True,
-    train_threshold=True,
-    )
+net = xylo.nets.synnetv2(output='vmem').to(device)
 
 net = net.to(device)
 
-def build_all_rasters(train, t_stop, dt):
-    n = train.spike_times.nrows
-    n_steps = int(t_stop / dt)
-
-    rasters_np = np.zeros((n, n_steps, net.size_in), dtype=np.float32)
-
-    for i in range(n):
-        event = TSEvent(
-            times=train.spike_times[i],
-            channels=train.spike_channels[i],
-            t_stop=t_stop
-        )
-        rasters_np[i] = event.raster(
-            dt, t_start=0.0, t_stop=t_stop, add_events=True
-        )
-
-    return torch.from_numpy(rasters_np)
-
-def build_all_labels(train, species, t_stop, dt, label_amplitude=1.0):
-    n = train.samples.nrows
-    n_steps = int(t_stop / dt)
-
-    labels = torch.zeros((n, n_steps, net.size_out), dtype=torch.float32)
-
-    for i, sample in enumerate(train.samples):
-        if species[i] == "None":
-            continue
-
-        start = int(1 / dt)
-        stop = start + int(sample["call_duration"] / dt)
-        labels[i, start:stop, 0] = label_amplitude
-
-    return labels
-
 print("Building rasters...")
-all_rasters = build_all_rasters(train, t_stop, net.dt)
+all_rasters = xylo.training.build_all_rasters(train, t_stop, net.dt, net.size_in).to(device)
 
 print("Building labels...")
-all_labels = build_all_labels(train, species, t_stop, net.dt, label_amplitude=1.5)
-
-# Move **once**
-all_rasters = all_rasters.to(device)
-all_labels = all_labels.to(device)
-
-def sample_batch(batch_size):
-    half = batch_size // 2
-
-    sig = rng.choice(signal_idx, size=half, replace=False)
-    noi = rng.choice(noise_idx, size=half, replace=False)
-
-    idx = np.concatenate([sig, noi])
-    rng.shuffle(idx)
-
-    return torch.as_tensor(idx, device=device)
-
-def load_batch(batch_idx):
-    return (
-        all_rasters[batch_idx],
-        all_labels[batch_idx]
-    )
-
-def save_checkpoint(
-    path,
-    model,
-    optimizer,
-    epoch,
-    loss,
-    extra=None
-):
-    checkpoint = {
-        "epoch": epoch,
-        "model_state": model.state_dict(),
-        "optimizer_state": optimizer.state_dict(),
-        "loss": loss,
-    }
-
-    if extra is not None:
-        checkpoint.update(extra)
-
-    torch.save(checkpoint, path)
+all_labels = xylo.training.build_all_labels(train, species, t_stop, net.dt, net.size_out, label_amplitude=1.5).to(device)
 
 optimizer = Adam(net.parameters().astorch(), lr=1e-5)
 
@@ -152,9 +67,9 @@ net.train()
 loss_t = []
 for epoch in range(10000):
         
-    batch_idc = sample_batch(batch_size)
+    batch_idc = xylo.training.sample_batch(batch_size, signal_idx, noise_idx)
 
-    rasters, labels = load_batch(batch_idc)
+    rasters, labels = all_rasters[batch_idc], all_labels[batch_idc]
 
     # events = events.to_dense()
     optimizer.zero_grad()
@@ -166,16 +81,16 @@ for epoch in range(10000):
     loss = loss_fun(output, labels)
     
     this_loss = loss.item()
-    
+    r"""
     if epoch % 50 == 0:
-        save_checkpoint(
+        xylo.training.save_checkpoint(
             rf"C:\Users\Daniel\repos\xylo\scripts\checkpoints\snthv2_checkpoint_epoch_{epoch:04d}.pt",
             net,
             optimizer,
             epoch,
             this_loss,
         )
-    
+    """
     loss.backward()
     optimizer.step()
 

@@ -10,8 +10,6 @@ from rockpool.timeseries import TSEvent
 
 rng = np.random.default_rng()
 
-
-
 def build_all_rasters(train, t_stop, dt, size_in):
     n = train.spike_times.nrows
     n_steps = int(t_stop / dt)
@@ -45,3 +43,35 @@ def build_all_labels(train, species, t_stop, dt, size_out, label_amplitude=1.0):
         labels[i, start:stop, 0] = label_amplitude
 
     return labels
+
+def sample_batch(batch_size, signal_idx, noise_idx):
+    half = batch_size // 2
+
+    sig = rng.choice(signal_idx, size=half, replace=False)
+    noi = rng.choice(noise_idx, size=half, replace=False)
+
+    idx = np.concatenate([sig, noi])
+    rng.shuffle(idx)
+
+    return torch.as_tensor(idx)
+
+def save_checkpoint(
+    path,
+    model,
+    optimizer,
+    epoch,
+    loss,
+    extra=None
+):
+    checkpoint = {
+        "epoch": epoch,
+        "model_state": model.state_dict(),
+        "optimizer_state": optimizer.state_dict(),
+        "loss": loss,
+    }
+
+    if extra is not None:
+        checkpoint.update(extra)
+
+    torch.save(checkpoint, path)
+
