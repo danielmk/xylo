@@ -81,3 +81,26 @@ for i, (w_qat, w_hw) in enumerate(zip(W_rec_qat, W_rec_hw)):
     
 print("Output mismatch:",
   (W_out_qat.cpu().numpy() != W_out_hw).sum())
+
+
+neuron_modules = [
+    m for m in net.seq.modules()
+    if isinstance(m, LIFTorchQAT)
+]
+
+def get_th(m):
+    return m.threshold.value if hasattr(m.threshold, "value") else m.threshold
+
+th_qat = [
+    torch.round(get_th(m) * global_scale)
+    for m in neuron_modules[:-1]
+]
+
+th_out_qat = torch.round(get_th(neuron_modules[-1]) * output_scale)
+
+for i, (t_q, t_hw) in enumerate(zip(th_qat, th_hw)):
+    print(f"Threshold {i} mismatch:",
+          (t_q.cpu().numpy() != t_hw).sum())
+
+print("Output threshold mismatch:",
+      (th_out_qat.cpu().numpy() != th_out_hw).sum())
