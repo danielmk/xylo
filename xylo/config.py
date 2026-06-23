@@ -6,3 +6,4 @@ if platform.system() == 'Windows':
 elif platform.system() == 'Linux':
     okeon_bucket = pathlib.Path("/bucket/FukaiU/danielmk/okeon/")
 
+colors = ['#C70019', '#0D6B9A', '#EE9A20', '#6389A5', '#EA521C', '#8A963F']
